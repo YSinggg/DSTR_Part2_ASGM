@@ -1,0 +1,202 @@
+#ifndef TASK4_ACTIVITY_HISTORY_HPP
+#define TASK4_ACTIVITY_HISTORY_HPP
+
+#include "CampusSystem.hpp"
+
+const int MAX_HISTORY_VIEW = 100;
+
+void printActivity(Activity& a) {
+    cout << "  #" << left << setw(4) << a.activityNo << a.time << "  "
+         << setw(8) << a.parcelId << setw(10) << a.type
+         << a.oldStatus << " -> " << a.newStatus << "\n";
+    cout << "        " << a.description;
+    if (a.reversed) {
+        cout << "  [REVERSED]";
+    }
+    cout << "\n";
+}
+
+void showRecentActivities(CampusSystem& sys) {
+    cout << "\n--- Recent Activities (Newest First) ---\n";
+    if (sys.history.isEmpty()) {
+        cout << "No activity records found.\n";
+        return;
+    }
+    int count = readInt("How many activities to show? ");
+    if (count <= 0) {
+        cout << "Please enter a positive number.\n";
+        return;
+    }
+
+    ActivityNode* current = sys.history.getTop();
+    int shown = 0;
+    while (current != nullptr && shown < count) {
+        printActivity(current->data);
+        current = current->next;
+        shown++;
+    }
+    cout << "Showing " << shown << " of " << sys.history.size() << " activities.\n";
+}
+
+void reviewParcelHistory(CampusSystem& sys) {
+    cout << "\n--- Parcel Activity History ---\n";
+    string parcelId = toUpper(readLine("Parcel ID: "));
+    int pIndex = findParcel(sys, parcelId);
+    if (pIndex == -1) {
+        cout << "Error: Parcel ID " << parcelId << " not found.\n";
+        return;
+    }
+    Parcel& p = sys.parcels[pIndex];
+
+    Activity* found[MAX_HISTORY_VIEW];
+    int count = 0;
+    ActivityNode* current = sys.history.getTop();
+    while (current != nullptr && count < MAX_HISTORY_VIEW) {
+        if (current->data.parcelId == parcelId) {
+            found[count++] = &current->data;
+        }
+        current = current->next;
+    }
+
+    if (count == 0) {
+        cout << "No history found for parcel " << parcelId << ".\n";
+        return;
+    }
+
+    cout << "\nActivities in chronological order:\n";
+    for (int i = count - 1; i >= 0; i--) {
+        printActivity(*found[i]);
+    }
+
+    Activity* latest = found[0];
+    cout << "\nCurrent Status  : " << p.status << "\n";
+    cout << "Previous Status : " << (latest->oldStatus == "-" ? "None" : latest->oldStatus) << "\n";
+    cout << "Latest Action   : #" << latest->activityNo << " " << latest->type
+         << " - " << latest->description << "\n";
+    if (p.activeRequestId != "") {
+        int rIdx = findRequest(sys, p.activeRequestId);
+        if (rIdx != -1) {
+            ServiceRequest& r = sys.requests[rIdx];
+            cout << "Active Request  : " << r.requestId << " (" << r.serviceType << ", " << r.status << ")";
+            if (r.resourceId != "") {
+                cout << " handled by " << r.resourceId;
+            }
+            cout << "\n";
+        }
+    } else {
+        cout << "Active Request  : None\n";
+    }
+}
+
+bool undoSort(CampusSystem& sys, Activity* a, Parcel& p) {
+    if (a->requestId != "") {
+        int rIndex = findRequest(sys, a->requestId);
+        if (rIndex == -1) return false;
+        ServiceRequest& r = sys.requests[rIndex];
+        if (r.status != "Waiting") {
+            return false;
+        }
+        sys.requestQueue.removeRequest(r.requestId);
+        r.status = "Cancelled";
+        p.activeRequestId = "";
+    }
+    p.status = "Registered";
+    sys.intakeQueue.enqueue(p.parcelId);
+    return true;
+}
+
+bool undoAssign(CampusSystem& sys, Activity* a) {
+    int rIndex = findRequest(sys, a->requestId);
+    if (rIndex == -1 || sys.requests[rIndex].status != "Assigned") {
+        return false;
+    }
+    releaseResource(sys, a->resourceId);
+    returnRequestToWaiting(sys, rIndex);
+    return true;
+}
+
+void undoActivity(CampusSystem& sys) {
+    cout << "\n--- Undo Recent Activity ---\n";
+    if (sys.history.isEmpty()) {
+        cout << "No activities to undo.\n";
+        return;
+    }
+
+    cout << "Recent activities:\n";
+    ActivityNode* current = sys.history.getTop();
+    for (int i = 0; i < 5 && current != nullptr; i++) {
+        printActivity(current->data);
+        current = current->next;
+    }
+    cout << "(Note: Only latest SORT and ASSIGN activities can be undone)\n";
+
+    int no = readInt("Enter activity number to undo (0 = cancel): ");
+    if (no == 0) return;
+
+    Activity* a = sys.history.findActivity(no);
+    if (a == nullptr) {
+        cout << "Error: Activity #" << no << " does not exist.\n";
+        return;
+    }
+    if (a->reversed) {
+        cout << "Error: Activity #" << no << " was already reversed.\n";
+        return;
+    }
+    if (!a->canUndo) {
+        cout << "Error: Activity #" << no << " (" << a->type << ") cannot be undone.\n";
+        return;
+    }
+
+    int pIndex = findParcel(sys, a->parcelId);
+    if (pIndex == -1) {
+        cout << "Error: Parcel not found.\n";
+        return;
+    }
+    Parcel& p = sys.parcels[pIndex];
+
+    if (sys.history.latestActivityFor(p.parcelId) != no || p.status != a->newStatus) {
+        cout << "Error: Cannot undo #" << no << ". Parcel status has changed since this action.\n";
+        return;
+    }
+
+    string statusBefore = p.status;
+    bool done = false;
+    if (a->type == "SORT") {
+        done = undoSort(sys, a, p);
+    } else if (a->type == "ASSIGN") {
+        done = undoAssign(sys, a);
+    }
+
+    if (!done) {
+        cout << "Undo failed: Associated request is no longer in valid state.\n";
+        return;
+    }
+
+    a->reversed = true;
+    logActivity(sys, p.parcelId, "UNDO", "Reversed activity #" + to_string(no) + " (" + a->type + ")",
+                statusBefore, p.status, a->requestId, a->resourceId, false);
+    cout << "Activity #" << no << " reversed successfully. Parcel " << p.parcelId
+         << " status restored to: " << p.status << "\n";
+}
+
+void task4Menu(CampusSystem& sys) {
+    int choice = -1;
+    while (choice != 0) {
+        cout << "\n========== TASK 4: ACTIVITY LOG & UNDO ==========\n";
+        cout << "  1. View recent activities\n";
+        cout << "  2. Review parcel activity history\n";
+        cout << "  3. Undo an activity\n";
+        cout << "  0. Back to main menu\n";
+        choice = readInt("Choose: ");
+
+        switch (choice) {
+            case 1: showRecentActivities(sys); break;
+            case 2: reviewParcelHistory(sys); break;
+            case 3: undoActivity(sys); break;
+            case 0: break;
+            default: cout << "Invalid choice!\n";
+        }
+    }
+}
+
+#endif
