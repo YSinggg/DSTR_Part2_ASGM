@@ -20,6 +20,17 @@ int countResourcesOfType(CampusSystem& sys, string type) {
     return total;
 }
 
+// Format check for Resource IDs (e.g. C1 for Counter, D1 for Delivery)
+bool isValidResourceId(string id, string type) {
+    if (id.length() < 2 || id.length() > 4) return false;
+    char expected = (type == "Counter") ? 'C' : 'D';
+    if (id[0] != expected) return false;
+    for (int i = 1; i < (int)id.length(); i++) {
+        if (id[i] < '0' || id[i] > '9') return false;
+    }
+    return true;
+}
+
 void addResource(CampusSystem& sys, string id, string name, string type) {
     Resource res;
     res.resourceId = id;
@@ -43,7 +54,9 @@ void releaseResource(CampusSystem& sys, string resourceId) {
     }
     res.status = "Available";
     res.requestId = "";
-    queueFor(sys, res.type).enqueue(resourceId);
+    if (!queueFor(sys, res.type).enqueue(resourceId)) {
+        cout << "Warning: " << res.type << " queue capacity reached.\n";
+    }
 }
 
 void doAssignment(CampusSystem& sys, int rIndex, int resIndex) {
@@ -65,13 +78,15 @@ void doAssignment(CampusSystem& sys, int rIndex, int resIndex) {
     r.resourceId = res.resourceId;
 
     int pIndex = findParcel(sys, r.parcelId);
-    Parcel& p = sys.parcels[pIndex];
-    string oldStatus = p.status;
-    p.status = "Assigned to " + res.resourceId;
+    if (pIndex != -1) {
+        Parcel& p = sys.parcels[pIndex];
+        string oldStatus = p.status;
+        p.status = "Assigned to " + res.resourceId;
 
-    logActivity(sys, p.parcelId, "ASSIGN",
-                r.serviceType + " request " + r.requestId + " assigned to " + res.resourceId,
-                oldStatus, p.status, r.requestId, res.resourceId, true);
+        logActivity(sys, p.parcelId, "ASSIGN",
+                    r.serviceType + " request " + r.requestId + " assigned to " + res.resourceId,
+                    oldStatus, p.status, r.requestId, res.resourceId, true);
+    }
     cout << "Assigned " << r.requestId << " to " << res.resourceId << " (" << res.name << ").\n";
 }
 
@@ -81,24 +96,34 @@ void registerResource(CampusSystem& sys) {
         cout << "Error: Max limit of " << MAX_RESOURCES << " resources reached.\n";
         return;
     }
-    string id = toUpper(readLine("Resource ID (e.g. C3, D3): "));
-    string name = readLine("Resource Name             : ");
-    cout << "Resource Type:\n  1. Counter\n  2. Delivery Staff\n";
+
+    cout << "Resource Type:\n  1. Counter (e.g. C1, C2)\n  2. Delivery Staff (e.g. D1, D2)\n";
     int typeChoice = readInt("Choose (1-2): ");
+    if (typeChoice != 1 && typeChoice != 2) {
+        cout << "Error: Invalid choice.\n";
+        return;
+    }
+
+    string type = (typeChoice == 1) ? "Counter" : "Delivery";
+    char prefixChar = (type == "Counter") ? 'C' : 'D';
+    string exampleId = (type == "Counter") ? "C3" : "D3";
+
+    string id = toUpper(readLine("Resource ID (" + string(1, prefixChar) + " + number, e.g. " + exampleId + "): "));
+    string name = readLine("Resource Name: ");
 
     if (id == "" || name == "") {
         cout << "Error: ID and Name cannot be empty.\n";
+        return;
+    }
+    if (!isValidResourceId(id, type)) {
+        cout << "Error: Invalid resource ID '" << id << "'! " << type
+             << " ID must start with '" << prefixChar << "' followed by digits (e.g. " << exampleId << ").\n";
         return;
     }
     if (findResource(sys, id) != -1) {
         cout << "Error: Resource ID already exists.\n";
         return;
     }
-    if (typeChoice != 1 && typeChoice != 2) {
-        cout << "Error: Invalid choice.\n";
-        return;
-    }
-    string type = (typeChoice == 1) ? "Counter" : "Delivery";
     if (queueFor(sys, type).isFull()) {
         cout << "Error: " << type << " queue is full.\n";
         return;
@@ -158,10 +183,12 @@ void assignNextRequest(CampusSystem& sys) {
     int rIndex = -1;
     while (current != nullptr) {
         int index = findRequest(sys, current->requestId);
-        string type = resourceTypeFor(sys.requests[index].serviceType);
-        if (!queueFor(sys, type).isEmpty()) {
-            rIndex = index;
-            break;
+        if (index != -1) {
+            string type = resourceTypeFor(sys.requests[index].serviceType);
+            if (!queueFor(sys, type).isEmpty()) {
+                rIndex = index;
+                break;
+            }
         }
         current = current->next;
     }
@@ -234,6 +261,10 @@ void updateResourceStatus(CampusSystem& sys) {
             cout << "Cannot set available while occupied with a request.\n";
             return;
         }
+        if (queueFor(sys, res.type).isFull()) {
+            cout << "Error: " << res.type << " queue is full.\n";
+            return;
+        }
         res.status = "Available";
         queueFor(sys, res.type).enqueue(res.resourceId);
         cout << id << " is now Available.\n";
@@ -252,17 +283,25 @@ void updateResourceStatus(CampusSystem& sys) {
         // if Occupied, free the request back to waiting
         string reqId = res.requestId;
         int rIndex = findRequest(sys, reqId);
-        int pIndex = findParcel(sys, sys.requests[rIndex].parcelId);
-        string oldStatus = sys.parcels[pIndex].status;
+        if (rIndex != -1) {
+            int pIndex = findParcel(sys, sys.requests[rIndex].parcelId);
+            if (pIndex != -1) {
+                string oldStatus = sys.parcels[pIndex].status;
 
+                res.status = "Unavailable";
+                res.requestId = "";
+                returnRequestToWaiting(sys, rIndex);
+
+                logActivity(sys, sys.parcels[pIndex].parcelId, "RESOURCE",
+                            id + " unavailable, " + reqId + " returned to waiting",
+                            oldStatus, sys.parcels[pIndex].status, reqId, id, false);
+                cout << id << " marked Unavailable. Request " << reqId << " returned to waiting queue.\n";
+                return;
+            }
+        }
         res.status = "Unavailable";
         res.requestId = "";
-        returnRequestToWaiting(sys, rIndex);
-
-        logActivity(sys, sys.parcels[pIndex].parcelId, "RESOURCE",
-                    id + " unavailable, " + reqId + " returned to waiting",
-                    oldStatus, sys.parcels[pIndex].status, reqId, id, false);
-        cout << id << " marked Unavailable. Request " << reqId << " returned to waiting queue.\n";
+        cout << id << " marked Unavailable.\n";
     }
 }
 

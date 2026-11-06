@@ -21,8 +21,10 @@ int createServiceRequest(CampusSystem& sys, string parcelId, string serviceType)
     sys.requestQueue.enqueue(r.requestId, r.priority, r.orderNo);
 
     int pIndex = findParcel(sys, parcelId);
-    sys.parcels[pIndex].activeRequestId = r.requestId;
-    sys.parcels[pIndex].status = waitingStatusFor(serviceType);
+    if (pIndex != -1) {
+        sys.parcels[pIndex].activeRequestId = r.requestId;
+        sys.parcels[pIndex].status = waitingStatusFor(serviceType);
+    }
     return sys.requestCount++;
 }
 
@@ -33,7 +35,9 @@ void returnRequestToWaiting(CampusSystem& sys, int rIndex) {
     sys.requestQueue.enqueue(r.requestId, r.priority, r.orderNo);
 
     int pIndex = findParcel(sys, r.parcelId);
-    sys.parcels[pIndex].status = waitingStatusFor(r.serviceType);
+    if (pIndex != -1) {
+        sys.parcels[pIndex].status = waitingStatusFor(r.serviceType);
+    }
 }
 
 void printRequestHeader() {
@@ -90,6 +94,10 @@ void createRequestMenu(CampusSystem& sys) {
 
     string oldStatus = p.status;
     int rIndex = createServiceRequest(sys, parcelId, services[choice - 1]);
+    if (rIndex == -1) {
+        cout << "Error: Service request storage is full.\n";
+        return;
+    }
     ServiceRequest& r = sys.requests[rIndex];
     logActivity(sys, parcelId, "REQUEST", r.serviceType + " request " + r.requestId + " created",
                 oldStatus, p.status, r.requestId, "", false);
@@ -150,6 +158,10 @@ void completeRequest(CampusSystem& sys) {
     }
 
     int pIndex = findParcel(sys, r.parcelId);
+    if (pIndex == -1) {
+        cout << "Error: Parcel associated with this request was not found.\n";
+        return;
+    }
     Parcel& p = sys.parcels[pIndex];
     bool failed = false;
 
@@ -166,9 +178,9 @@ void completeRequest(CampusSystem& sys) {
     }
 
     if (!failed && r.serviceType != "Return to Sender") {
-        string shownId = toUpper(readLine("Recipient verification ID: "));
-        if (shownId != p.recipientId) {
-            cout << "Error: Recipient ID does not match! Parcel not delivered.\n";
+        string shownId = toUpper(readLine("Recipient verification ID (" + p.recipientId.substr(0, 2) + "######): "));
+        if (shownId != toUpper(p.recipientId)) {
+            cout << "Error: Recipient ID does not match ('" << shownId << "' != expected '" << p.recipientId << "')! Parcel not released.\n";
             return;
         }
     }
@@ -226,13 +238,15 @@ void cancelRequest(CampusSystem& sys) {
     r.status = "Cancelled";
 
     int pIndex = findParcel(sys, r.parcelId);
-    Parcel& p = sys.parcels[pIndex];
-    string oldStatus = p.status;
-    p.status = "Request Cancelled";
-    p.activeRequestId = "";
+    if (pIndex != -1) {
+        Parcel& p = sys.parcels[pIndex];
+        string oldStatus = p.status;
+        p.status = "Request Cancelled";
+        p.activeRequestId = "";
 
-    logActivity(sys, p.parcelId, "CANCEL", "Request " + requestId + " cancelled",
-                oldStatus, p.status, requestId, r.resourceId, false);
+        logActivity(sys, p.parcelId, "CANCEL", "Request " + requestId + " cancelled",
+                    oldStatus, p.status, requestId, r.resourceId, false);
+    }
     cout << "Request " << requestId << " cancelled.\n";
 }
 

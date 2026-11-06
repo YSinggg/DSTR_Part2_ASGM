@@ -35,14 +35,61 @@ void showParcelDetails(Parcel& p) {
     }
 }
 
-bool isValidRecipientId(string id) {
-    if (id.length() < 5) return false;
-    string start = id.substr(0, 2);
-    if (start != "TP" && start != "ST") return false;
-    for (int i = 2; i < (int)id.length(); i++) {
-        if (id[i] < '0' || id[i] > '9') return false;
+// Format check for tracking numbers: 2 uppercase letters + 6 digits (e.g. JT100001, PL200002)
+bool isValidTrackingNo(string trackingNo, string expectedPrefix = "") {
+    if (trackingNo.length() != 8) return false;
+
+    // First 2 characters must be uppercase letters
+    if (trackingNo[0] < 'A' || trackingNo[0] > 'Z') return false;
+    if (trackingNo[1] < 'A' || trackingNo[1] > 'Z') return false;
+
+    // If an expected courier prefix is specified, it must match
+    if (expectedPrefix != "") {
+        if (trackingNo.substr(0, 2) != expectedPrefix) return false;
+    }
+
+    // Remaining 6 characters must be numeric digits
+    for (int i = 2; i < 8; i++) {
+        if (trackingNo[i] < '0' || trackingNo[i] > '9') return false;
     }
     return true;
+}
+
+// Format check for Recipient ID (APU Student TP012345 or Staff ST1001)
+bool isValidRecipientId(string id) {
+    if (id.length() < 6) return false;
+    string start = id.substr(0, 2);
+    if (start == "TP") {
+        // TP + 6 digits = 8 characters
+        if (id.length() != 8) return false;
+        for (int i = 2; i < 8; i++) {
+            if (id[i] < '0' || id[i] > '9') return false;
+        }
+        return true;
+    } else if (start == "ST") {
+        // ST + 4 or 5 digits = 6 or 7 characters
+        if (id.length() != 6 && id.length() != 7) return false;
+        for (int i = 2; i < (int)id.length(); i++) {
+            if (id[i] < '0' || id[i] > '9') return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+// Format check for recipient name
+bool isValidName(string name) {
+    if (name.length() < 2) return false;
+    bool hasLetter = false;
+    for (int i = 0; i < (int)name.length(); i++) {
+        char c = name[i];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+            hasLetter = true;
+        } else if (c != ' ' && c != '\'' && c != '.' && c != '-') {
+            return false;
+        }
+    }
+    return hasLetter;
 }
 
 string addParcel(CampusSystem& sys, string trackingNo, string name, string recipientId,
@@ -70,36 +117,91 @@ string addParcel(CampusSystem& sys, string trackingNo, string name, string recip
 void registerParcel(CampusSystem& sys) {
     cout << "\n--- Register New Parcel ---\n";
     if (sys.parcelCount >= MAX_PARCELS) {
-        cout << "Error: Parcel storage is full.\n";
+        cout << "Error: Parcel storage is full (max " << MAX_PARCELS << ").\n";
         return;
     }
 
-    string trackingNo = toUpper(readLine("Courier tracking number : "));
+    // Courier selection with standard courier codes
+    cout << "Select Courier:\n";
+    cout << "  1. J&T Express (JT)\n";
+    cout << "  2. Pos Laju (PL)\n";
+    cout << "  3. Shopee Express (SP)\n";
+    cout << "  4. Ninja Van (NV)\n";
+    cout << "  5. DHL Express (DH)\n";
+    cout << "  6. Other Courier\n";
+    int courierChoice = readInt("Choose courier (1-6): ");
+
+    if (courierChoice < 1 || courierChoice > 6) {
+        cout << "Error: Invalid courier choice.\n";
+        return;
+    }
+
+    string courier = "";
+    string expectedPrefix = "";
+    if (courierChoice == 1) { courier = "J&T"; expectedPrefix = "JT"; }
+    else if (courierChoice == 2) { courier = "Pos Laju"; expectedPrefix = "PL"; }
+    else if (courierChoice == 3) { courier = "Shopee Express"; expectedPrefix = "SP"; }
+    else if (courierChoice == 4) { courier = "Ninja Van"; expectedPrefix = "NV"; }
+    else if (courierChoice == 5) { courier = "DHL"; expectedPrefix = "DH"; }
+    else {
+        courier = readLine("Enter courier company name: ");
+        if (courier == "") {
+            cout << "Error: Courier company name cannot be empty!\n";
+            return;
+        }
+        expectedPrefix = "";
+    }
+
+    // Tracking Number format check
+    string trackingPrompt = (expectedPrefix != "") ?
+        ("Courier tracking number (" + expectedPrefix + " + 6 digits, e.g. " + expectedPrefix + "100001): ") :
+        ("Courier tracking number (2 letters + 6 digits, e.g. AB123456): ");
+    string trackingNo = toUpper(readLine(trackingPrompt));
+
+    if (!isValidTrackingNo(trackingNo, expectedPrefix)) {
+        if (expectedPrefix != "") {
+            cout << "Error: Invalid tracking number '" << trackingNo
+                 << "'! For " << courier << ", tracking number must start with '"
+                 << expectedPrefix << "' followed by exactly 6 digits (e.g. " << expectedPrefix << "100001).\n";
+        } else {
+            cout << "Error: Invalid tracking number '" << trackingNo
+                 << "'! Format must be 2 uppercase letters followed by 6 digits (e.g. AB123456).\n";
+        }
+        return;
+    }
+
+    // Check duplicate tracking number
+    if (findParcelByTracking(sys, trackingNo) != -1) {
+        int dupIdx = findParcelByTracking(sys, trackingNo);
+        cout << "Error: Tracking number already exists (" << sys.parcels[dupIdx].parcelId << ")!\n";
+        return;
+    }
+
     string name = readLine("Recipient name          : ");
-    string recipientId = toUpper(readLine("Recipient ID (TP/ST)    : "));
+    if (!isValidName(name)) {
+        cout << "Error: Invalid recipient name '" << name << "'. Must contain letters.\n";
+        return;
+    }
+
+    string recipientId = toUpper(readLine("Recipient ID (TP###### / ST####) : "));
+    if (!isValidRecipientId(recipientId)) {
+        cout << "Error: Invalid recipient ID '" << recipientId
+             << "'. Must be TP with 6 digits (e.g. TP070597) or ST with 4-5 digits (e.g. ST1001).\n";
+        return;
+    }
+
     string location = readLine("Delivery location       : ");
-    string courier = readLine("Courier company         : ");
+    if (location == "") {
+        cout << "Error: Delivery location cannot be empty!\n";
+        return;
+    }
+
     cout << "Parcel types:\n";
     cout << "  1. Normal\n  2. Fragile\n  3. Perishable\n  4. Document\n";
     int typeChoice = readInt("Choose type (1-4): ");
-
-    if (trackingNo == "" || name == "" || recipientId == "" || location == "" || courier == "") {
-        cout << "Error: All fields are required!\n";
-        return;
-    }
-    if (!isValidRecipientId(recipientId)) {
-        cout << "Error: Invalid recipient ID '" << recipientId << "'. Must start with TP or ST.\n";
-        return;
-    }
     if (typeChoice < 1 || typeChoice > 4) {
         cout << "Error: Invalid parcel type selected.\n";
         return;
-    }
-    for (int i = 0; i < sys.parcelCount; i++) {
-        if (sys.parcels[i].trackingNo == trackingNo) {
-            cout << "Error: Tracking number already exists (" << sys.parcels[i].parcelId << ")!\n";
-            return;
-        }
     }
 
     string types[4] = {"Normal", "Fragile", "Perishable", "Document"};
@@ -141,9 +243,10 @@ void viewIntakeQueue(CampusSystem& sys) {
 
 void searchParcel(CampusSystem& sys) {
     cout << "\n--- Search Parcel ---\n";
-    cout << "  1. Search by Parcel ID\n";
-    cout << "  2. Search by Recipient ID\n";
-    int choice = readInt("Choose: ");
+    cout << "  1. Search by Parcel ID (e.g. P001)\n";
+    cout << "  2. Search by Recipient ID (e.g. TP012345)\n";
+    cout << "  3. Search by Tracking Number (e.g. JT100001)\n";
+    int choice = readInt("Choose (1-3): ");
 
     if (choice == 1) {
         string parcelId = toUpper(readLine("Parcel ID: "));
@@ -157,7 +260,7 @@ void searchParcel(CampusSystem& sys) {
         string recipientId = toUpper(readLine("Recipient ID: "));
         int found = 0;
         for (int i = 0; i < sys.parcelCount; i++) {
-            if (sys.parcels[i].recipientId == recipientId) {
+            if (toUpper(sys.parcels[i].recipientId) == recipientId) {
                 if (found == 0) {
                     printParcelHeader();
                 }
@@ -168,6 +271,14 @@ void searchParcel(CampusSystem& sys) {
         if (found == 0) {
             cout << "No parcels found for recipient " << recipientId << ".\n";
         }
+    } else if (choice == 3) {
+        string trackingNo = toUpper(readLine("Tracking Number: "));
+        int index = findParcelByTracking(sys, trackingNo);
+        if (index == -1) {
+            cout << "Parcel with tracking number " << trackingNo << " not found.\n";
+            return;
+        }
+        showParcelDetails(sys.parcels[index]);
     } else {
         cout << "Invalid choice!\n";
     }
@@ -182,6 +293,11 @@ void sortNextParcel(CampusSystem& sys) {
 
     string parcelId = sys.intakeQueue.peek();
     int index = findParcel(sys, parcelId);
+    if (index == -1) {
+        sys.intakeQueue.dequeue();
+        cout << "Error: Parcel record missing from system.\n";
+        return;
+    }
     Parcel& p = sys.parcels[index];
     showParcelDetails(p);
 
@@ -202,6 +318,18 @@ void sortNextParcel(CampusSystem& sys) {
         cout << "Invalid choice! Parcel remains in queue.\n";
         return;
     }
+
+    // Warning check if parcel is fragile or perishable but regular delivery/collection chosen
+    if ((p.parcelType == "Fragile" || p.parcelType == "Perishable") && (choice == 1 || choice == 2)) {
+        cout << "Notice: Parcel type is '" << p.parcelType
+             << "'. Special Handling is strongly recommended.\n";
+        int confirm = readInt("Proceed with standard " + string(choice == 1 ? "Collection" : "Delivery") + "? (1 = Yes, 0 = Cancel): ");
+        if (confirm != 1) {
+            cout << "Sorting cancelled. Parcel remains in queue.\n";
+            return;
+        }
+    }
+
     if (choice != 5 && sys.requestCount >= MAX_REQUESTS) {
         cout << "Error: Service request storage is full.\n";
         return;
@@ -220,6 +348,10 @@ void sortNextParcel(CampusSystem& sys) {
     string services[4] = {"Collection", "Delivery", "Special Handling", "Return to Sender"};
     string serviceType = services[choice - 1];
     int rIndex = createServiceRequest(sys, parcelId, serviceType);
+    if (rIndex == -1) {
+        cout << "Error: Failed to create service request.\n";
+        return;
+    }
     string requestId = sys.requests[rIndex].requestId;
 
     logActivity(sys, parcelId, "SORT", "Sorted for " + serviceType + " (" + requestId + ")",
@@ -254,10 +386,15 @@ void updateParcel(CampusSystem& sys) {
     if (choice == 1) {
         cout << "Press Enter to keep current value.\n";
         string name = readLine("New recipient name: ");
-        string recipientId = toUpper(readLine("New recipient ID  : "));
+        string recipientId = toUpper(readLine("New recipient ID (TP###### / ST####): "));
         string location = readLine("New location      : ");
+
+        if (name != "" && !isValidName(name)) {
+            cout << "Error: Invalid recipient name '" << name << "'. Must contain letters.\n";
+            return;
+        }
         if (recipientId != "" && !isValidRecipientId(recipientId)) {
-            cout << "Error: Invalid recipient ID format.\n";
+            cout << "Error: Invalid recipient ID format. Must be TP with 6 digits or ST with 4-5 digits.\n";
             return;
         }
         if (name != "") p.recipientName = name;

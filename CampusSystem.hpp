@@ -36,24 +36,17 @@ struct CampusSystem {
 };
 
 // Input helper functions
-string readLine(string prompt) {
-    cout << prompt;
-    string input;
-    getline(cin, input);
-    return input;
-}
-
-int readInt(string prompt) {
-    string str;
-    while (true) {
-        cout << prompt;
-        getline(cin, str);
-        try {
-            return stoi(str);
-        } catch (...) {
-            cout << "Invalid input! Please enter a number.\n";
-        }
+string trim(string s) {
+    int start = 0;
+    while (start < (int)s.length() && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r' || s[start] == '\n')) {
+        start++;
     }
+    int end = (int)s.length() - 1;
+    while (end >= start && (s[end] == ' ' || s[end] == '\t' || s[end] == '\r' || s[end] == '\n')) {
+        end--;
+    }
+    if (end < start) return "";
+    return s.substr(start, end - start + 1);
 }
 
 string toUpper(string text) {
@@ -63,6 +56,31 @@ string toUpper(string text) {
         }
     }
     return text;
+}
+
+string readLine(string prompt) {
+    cout << prompt;
+    string input;
+    if (!getline(cin, input)) {
+        return "";
+    }
+    return trim(input);
+}
+
+int readInt(string prompt) {
+    string str;
+    while (true) {
+        cout << prompt;
+        if (!getline(cin, str)) {
+            exit(0);
+        }
+        str = trim(str);
+        try {
+            return stoi(str);
+        } catch (...) {
+            cout << "Invalid input! Please enter a number.\n";
+        }
+    }
 }
 
 string makeId(string prefix, int num) {
@@ -79,10 +97,21 @@ string currentTime() {
     return string(buf);
 }
 
-// Search helpers
+// Search helpers (case-insensitive & whitespace trimmed)
 int findParcel(CampusSystem& sys, string parcelId) {
+    string target = toUpper(trim(parcelId));
     for (int i = 0; i < sys.parcelCount; i++) {
-        if (sys.parcels[i].parcelId == parcelId) {
+        if (toUpper(sys.parcels[i].parcelId) == target) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int findParcelByTracking(CampusSystem& sys, string trackingNo) {
+    string target = toUpper(trim(trackingNo));
+    for (int i = 0; i < sys.parcelCount; i++) {
+        if (toUpper(sys.parcels[i].trackingNo) == target) {
             return i;
         }
     }
@@ -90,8 +119,9 @@ int findParcel(CampusSystem& sys, string parcelId) {
 }
 
 int findRequest(CampusSystem& sys, string requestId) {
+    string target = toUpper(trim(requestId));
     for (int i = 0; i < sys.requestCount; i++) {
-        if (sys.requests[i].requestId == requestId) {
+        if (toUpper(sys.requests[i].requestId) == target) {
             return i;
         }
     }
@@ -99,8 +129,9 @@ int findRequest(CampusSystem& sys, string requestId) {
 }
 
 int findResource(CampusSystem& sys, string resourceId) {
+    string target = toUpper(trim(resourceId));
     for (int i = 0; i < sys.resourceCount; i++) {
-        if (sys.resources[i].resourceId == resourceId) {
+        if (toUpper(sys.resources[i].resourceId) == target) {
             return i;
         }
     }
