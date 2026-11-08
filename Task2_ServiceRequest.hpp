@@ -59,7 +59,6 @@ void createRequestMenu(CampusSystem& sys) {
         return;
     }
 
-    // Check which parcels are eligible (not finished, no active request, sorted, not hold/missing)
     int eligibleCount = 0;
     for (int i = 0; i < sys.parcelCount; i++) {
         Parcel& p = sys.parcels[i];

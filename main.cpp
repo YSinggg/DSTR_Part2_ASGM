@@ -27,7 +27,6 @@ void showDashboard(CampusSystem& sys) {
          << " | Free Counters: " << sys.counterQueue.size()
          << " | Free Riders: " << sys.deliveryQueue.size() << "\n";
 
-    // Dynamic workflow status guide
     if (sys.intakeQueue.size() > 0) {
         cout << "  >> Workflow Status: " << sys.intakeQueue.size() 
              << " parcel(s) waiting in Task 1 to be sorted.\n";

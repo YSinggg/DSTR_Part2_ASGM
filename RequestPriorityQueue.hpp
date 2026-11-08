@@ -44,7 +44,6 @@ public:
         newNode->orderNo = order;
         newNode->next = nullptr;
 
-        // lower priority value means higher urgency
         if (front == nullptr || prio < front->priority || 
            (prio == front->priority && order < front->orderNo)) {
             newNode->next = front;

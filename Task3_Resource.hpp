@@ -20,7 +20,6 @@ int countResourcesOfType(CampusSystem& sys, string type) {
     return total;
 }
 
-// Format check for Resource IDs (e.g. C1 for Counter, D1 for Delivery)
 bool isValidResourceId(string id, string type) {
     if (id.length() < 2 || id.length() > 4) return false;
     char expected = (type == "Counter") ? 'C' : 'D';
@@ -327,7 +326,6 @@ void updateResourceStatus(CampusSystem& sys) {
             cout << id << " marked as Unavailable.\n";
             return;
         }
-        // if Occupied, free the request back to waiting
         string reqId = res.requestId;
         int rIndex = findRequest(sys, reqId);
         if (rIndex != -1) {

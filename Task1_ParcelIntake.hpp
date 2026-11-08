@@ -35,39 +35,32 @@ void showParcelDetails(Parcel& p) {
     }
 }
 
-// Format check for tracking numbers: 2 uppercase letters + 6 digits (e.g. JT100001, PL200002)
 bool isValidTrackingNo(string trackingNo, string expectedPrefix = "") {
     if (trackingNo.length() != 8) return false;
 
-    // First 2 characters must be uppercase letters
     if (trackingNo[0] < 'A' || trackingNo[0] > 'Z') return false;
     if (trackingNo[1] < 'A' || trackingNo[1] > 'Z') return false;
 
-    // If an expected courier prefix is specified, it must match
     if (expectedPrefix != "") {
         if (trackingNo.substr(0, 2) != expectedPrefix) return false;
     }
 
-    // Remaining 6 characters must be numeric digits
     for (int i = 2; i < 8; i++) {
         if (trackingNo[i] < '0' || trackingNo[i] > '9') return false;
     }
     return true;
 }
 
-// Format check for Recipient ID (APU Student TP012345 or Staff ST1001)
 bool isValidRecipientId(string id) {
     if (id.length() < 6) return false;
     string start = id.substr(0, 2);
     if (start == "TP") {
-        // TP + 6 digits = 8 characters
         if (id.length() != 8) return false;
         for (int i = 2; i < 8; i++) {
             if (id[i] < '0' || id[i] > '9') return false;
         }
         return true;
     } else if (start == "ST") {
-        // ST + 4 or 5 digits = 6 or 7 characters
         if (id.length() != 6 && id.length() != 7) return false;
         for (int i = 2; i < (int)id.length(); i++) {
             if (id[i] < '0' || id[i] > '9') return false;
@@ -77,7 +70,6 @@ bool isValidRecipientId(string id) {
     return false;
 }
 
-// Format check for recipient name
 bool isValidName(string name) {
     if (name.length() < 2) return false;
     bool hasLetter = false;
@@ -121,7 +113,6 @@ void registerParcel(CampusSystem& sys) {
         return;
     }
 
-    // Courier selection with standard courier codes
     cout << "Select Courier:\n";
     cout << "  1. J&T Express (JT)\n";
     cout << "  2. Pos Laju (PL)\n";
@@ -152,7 +143,6 @@ void registerParcel(CampusSystem& sys) {
         expectedPrefix = "";
     }
 
-    // Tracking Number format check
     string trackingPrompt = (expectedPrefix != "") ?
         ("Courier tracking number (" + expectedPrefix + " + 6 digits, e.g. " + expectedPrefix + "100001): ") :
         ("Courier tracking number (2 letters + 6 digits, e.g. AB123456): ");
@@ -170,7 +160,6 @@ void registerParcel(CampusSystem& sys) {
         return;
     }
 
-    // Check duplicate tracking number
     if (findParcelByTracking(sys, trackingNo) != -1) {
         int dupIdx = findParcelByTracking(sys, trackingNo);
         cout << "Error: Tracking number already exists (" << sys.parcels[dupIdx].parcelId << ")!\n";
@@ -319,7 +308,6 @@ void sortNextParcel(CampusSystem& sys) {
         return;
     }
 
-    // Warning check if parcel is fragile or perishable but regular delivery/collection chosen
     if ((p.parcelType == "Fragile" || p.parcelType == "Perishable") && (choice == 1 || choice == 2)) {
         cout << "Notice: Parcel type is '" << p.parcelType
              << "'. Special Handling is strongly recommended.\n";

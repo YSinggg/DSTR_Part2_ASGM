@@ -97,7 +97,6 @@ string currentTime() {
     return string(buf);
 }
 
-// Search helpers (case-insensitive & whitespace trimmed)
 int findParcel(CampusSystem& sys, string parcelId) {
     string target = toUpper(trim(parcelId));
     for (int i = 0; i < sys.parcelCount; i++) {
