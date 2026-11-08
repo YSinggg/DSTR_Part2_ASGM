@@ -40,7 +40,18 @@ void showRecentActivities(CampusSystem& sys) {
 
 void reviewParcelHistory(CampusSystem& sys) {
     cout << "\n--- Parcel Activity History ---\n";
-    string parcelId = toUpper(readLine("Parcel ID: "));
+    if (sys.parcelCount == 0) {
+        cout << "No parcels registered in system.\n";
+        return;
+    }
+    cout << "Parcels in system: ";
+    for (int i = 0; i < sys.parcelCount; i++) {
+        cout << sys.parcels[i].parcelId;
+        if (i < sys.parcelCount - 1) cout << ", ";
+    }
+    cout << "\n";
+    string parcelId = toUpper(readLine("Enter Parcel ID to review (or 0 to cancel): "));
+    if (parcelId == "0" || parcelId == "") return;
     int pIndex = findParcel(sys, parcelId);
     if (pIndex == -1) {
         cout << "Error: Parcel ID " << parcelId << " not found.\n";
@@ -124,13 +135,33 @@ void undoActivity(CampusSystem& sys) {
 
     cout << "Recent activities:\n";
     ActivityNode* current = sys.history.getTop();
-    for (int i = 0; i < 5 && current != nullptr; i++) {
-        printActivity(current->data);
+    int canUndoCount = 0;
+    for (int i = 0; i < 6 && current != nullptr; i++) {
+        Activity& a = current->data;
+        cout << "  #" << left << setw(4) << a.activityNo << a.time << "  "
+             << setw(8) << a.parcelId << setw(10) << a.type
+             << a.oldStatus << " -> " << a.newStatus;
+        
+        if (a.reversed) {
+            cout << "  [ALREADY UNDONE]";
+        } else if (!a.canUndo) {
+            cout << "  (Cannot undo " << a.type << ")";
+        } else if (sys.history.latestActivityFor(a.parcelId) != a.activityNo) {
+            cout << "  (Parcel modified since then)";
+        } else {
+            cout << "  [CAN UNDO]";
+            canUndoCount++;
+        }
+        cout << "\n";
         current = current->next;
     }
-    cout << "(Note: Only latest SORT and ASSIGN activities can be undone)\n";
 
-    int no = readInt("Enter activity number to undo (0 = cancel): ");
+    if (canUndoCount == 0) {
+        cout << "\nNotice: None of the recent activities can be undone right now.\n";
+        return;
+    }
+
+    int no = readInt("Enter activity number to undo (or 0 to cancel): ");
     if (no == 0) return;
 
     Activity* a = sys.history.findActivity(no);

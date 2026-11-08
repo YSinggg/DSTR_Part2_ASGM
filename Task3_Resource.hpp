@@ -201,12 +201,45 @@ void assignNextRequest(CampusSystem& sys) {
     string type = resourceTypeFor(sys.requests[rIndex].serviceType);
     string resourceId = queueFor(sys, type).peek();
     doAssignment(sys, rIndex, findResource(sys, resourceId));
+    cout << "  -> Next Step: Recipient can collect/receive parcel. Complete handover in Task 2 (Option 5).\n";
 }
 
 void assignChosenRequest(CampusSystem& sys) {
-    cout << "\n--- Assign Request to Chosen Resource ---\n";
-    string reqId = toUpper(readLine("Request ID : "));
-    string resId = toUpper(readLine("Resource ID: "));
+    cout << "\n--- Manually Assign Request to Resource ---\n";
+    if (sys.requestQueue.isEmpty()) {
+        cout << "No waiting requests available to assign.\n";
+        return;
+    }
+
+    cout << "Waiting Requests:\n";
+    RequestNode* curr = sys.requestQueue.getFront();
+    while (curr != nullptr) {
+        int idx = findRequest(sys, curr->requestId);
+        if (idx != -1) {
+            cout << "  [" << curr->requestId << "] Parcel: " << sys.requests[idx].parcelId
+                 << " (" << sys.requests[idx].serviceType << ", Priority " << curr->priority << ")\n";
+        }
+        curr = curr->next;
+    }
+
+    cout << "Available Resources:\n";
+    bool anyRes = false;
+    for (int i = 0; i < sys.resourceCount; i++) {
+        if (sys.resources[i].status == "Available") {
+            cout << "  [" << sys.resources[i].resourceId << "] " << sys.resources[i].name
+                 << " (" << sys.resources[i].type << ")\n";
+            anyRes = true;
+        }
+    }
+    if (!anyRes) {
+        cout << "  (No resources currently Available. Please register or free one first).\n";
+        return;
+    }
+
+    string reqId = toUpper(readLine("Enter Request ID (or 0 to cancel): "));
+    if (reqId == "0" || reqId == "") return;
+    string resId = toUpper(readLine("Enter Resource ID (or 0 to cancel): "));
+    if (resId == "0" || resId == "") return;
     int rIndex = findRequest(sys, reqId);
     int resIndex = findResource(sys, resId);
 
@@ -239,7 +272,21 @@ void assignChosenRequest(CampusSystem& sys) {
 
 void updateResourceStatus(CampusSystem& sys) {
     cout << "\n--- Update Resource Status ---\n";
-    string id = toUpper(readLine("Resource ID: "));
+    if (sys.resourceCount == 0) {
+        cout << "No resources registered.\n";
+        return;
+    }
+    cout << "Current Resources:\n";
+    for (int i = 0; i < sys.resourceCount; i++) {
+        cout << "  [" << sys.resources[i].resourceId << "] " << sys.resources[i].name
+             << " (" << sys.resources[i].type << ") - " << sys.resources[i].status;
+        if (sys.resources[i].requestId != "") {
+            cout << " (Handling " << sys.resources[i].requestId << ")";
+        }
+        cout << "\n";
+    }
+    string id = toUpper(readLine("Enter Resource ID to change (or 0 to cancel): "));
+    if (id == "0" || id == "") return;
     int resIndex = findResource(sys, id);
     if (resIndex == -1) {
         cout << "Error: Resource not found.\n";

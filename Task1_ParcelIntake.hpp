@@ -356,12 +356,25 @@ void sortNextParcel(CampusSystem& sys) {
 
     logActivity(sys, parcelId, "SORT", "Sorted for " + serviceType + " (" + requestId + ")",
                 oldStatus, p.status, requestId, "", true);
-    cout << "Sorted " << parcelId << " for " << serviceType << ". Request " << requestId << " created.\n";
+    cout << "\n[Success] Parcel " << parcelId << " sorted for " << serviceType << "!\n";
+    cout << "  -> Service Request " << requestId << " automatically created and added to Task 2 waiting queue.\n";
+    cout << "  -> Next Step: Go to Task 3 (or Task 2 Option 4) to assign a counter/rider.\n";
 }
 
 void updateParcel(CampusSystem& sys) {
     cout << "\n--- Update or Remove Parcel ---\n";
-    string parcelId = toUpper(readLine("Parcel ID: "));
+    if (sys.parcelCount == 0) {
+        cout << "No parcels registered in system.\n";
+        return;
+    }
+    cout << "Parcels in system: ";
+    for (int i = 0; i < sys.parcelCount; i++) {
+        cout << sys.parcels[i].parcelId << " (" << sys.parcels[i].status << ")";
+        if (i < sys.parcelCount - 1) cout << ", ";
+    }
+    cout << "\n";
+    string parcelId = toUpper(readLine("Enter Parcel ID (or 0 to cancel): "));
+    if (parcelId == "0" || parcelId == "") return;
     int index = findParcel(sys, parcelId);
     if (index == -1) {
         cout << "Parcel " << parcelId << " does not exist.\n";

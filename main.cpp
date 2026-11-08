@@ -21,11 +21,31 @@ void loadSampleData(CampusSystem& sys) {
 }
 
 void showDashboard(CampusSystem& sys) {
-    cout << "Parcels: " << sys.parcelCount
-         << " | Unsorted: " << sys.intakeQueue.size()
+    cout << "  Parcels: " << sys.parcelCount
+         << " | Unsorted in Intake: " << sys.intakeQueue.size()
          << " | Waiting Requests: " << sys.requestQueue.size()
          << " | Free Counters: " << sys.counterQueue.size()
          << " | Free Riders: " << sys.deliveryQueue.size() << "\n";
+
+    // Dynamic workflow status guide
+    if (sys.intakeQueue.size() > 0) {
+        cout << "  >> Workflow Status: " << sys.intakeQueue.size() 
+             << " parcel(s) waiting in Task 1 to be sorted.\n";
+    } else if (sys.requestQueue.size() > 0) {
+        cout << "  >> Workflow Status: " << sys.requestQueue.size() 
+             << " request(s) waiting. Go to Task 3 (or Task 2) to assign a counter/rider.\n";
+    } else {
+        int assignedCount = 0;
+        for (int i = 0; i < sys.requestCount; i++) {
+            if (sys.requests[i].status == "Assigned") assignedCount++;
+        }
+        if (assignedCount > 0) {
+            cout << "  >> Workflow Status: " << assignedCount 
+                 << " assigned request(s) ready for completion & ID verification in Task 2.\n";
+        } else {
+            cout << "  >> Workflow Status: All active requests completed. Register more parcels in Task 1.\n";
+        }
+    }
 }
 
 int main() {
@@ -45,10 +65,10 @@ int main() {
     while (choice != 0) {
         cout << "\n--------------------- MAIN MENU ---------------------\n";
         showDashboard(sys);
-        cout << "1. Task 1 - Parcel Intake and Sorting\n";
-        cout << "2. Task 2 - Service Request Management\n";
-        cout << "3. Task 3 - Counter and Delivery Staff Allocation\n";
-        cout << "4. Task 4 - Activity Records and Undo\n";
+        cout << "1. Task 1 - Parcel Intake and Sorting (FIFO Queue)\n";
+        cout << "2. Task 2 - Service Request Management (Priority Queue)\n";
+        cout << "3. Task 3 - Counter & Rider Allocation (Circular Queue)\n";
+        cout << "4. Task 4 - Activity Records and Undo (LIFO Stack)\n";
         cout << "0. Exit Program\n";
         choice = readInt("Enter your choice: ");
 

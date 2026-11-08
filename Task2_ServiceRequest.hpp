@@ -53,12 +53,40 @@ void printRequestRow(ServiceRequest& r) {
 }
 
 void createRequestMenu(CampusSystem& sys) {
-    cout << "\n--- Create Service Request ---\n";
+    cout << "\n--- Create Manual / Re-delivery Request ---\n";
     if (sys.requestCount >= MAX_REQUESTS) {
-        cout << "Error: Request list is full.\n";
+        cout << "Error: Request storage is full.\n";
         return;
     }
-    string parcelId = toUpper(readLine("Parcel ID: "));
+
+    // Check which parcels are eligible (not finished, no active request, sorted, not hold/missing)
+    int eligibleCount = 0;
+    for (int i = 0; i < sys.parcelCount; i++) {
+        Parcel& p = sys.parcels[i];
+        if (!isParcelFinished(p.status) && p.activeRequestId == "" && p.status != "Registered" && p.status != "Missing" && p.status != "On Hold") {
+            eligibleCount++;
+        }
+    }
+
+    if (eligibleCount == 0) {
+        cout << "Notice: No parcels currently require a manual service request.\n";
+        cout << "  -> Note: Parcels sorted in Task 1 automatically create service requests in the queue.\n";
+        cout << "  -> Next Step: View waiting requests (Option 2) or quick assign resources (Option 4 / Task 3).\n";
+        cout << "  (This option is only needed if a delivery fails or an unscheduled re-delivery is requested).\n";
+        return;
+    }
+
+    cout << "Parcels needing a request:\n";
+    for (int i = 0; i < sys.parcelCount; i++) {
+        Parcel& p = sys.parcels[i];
+        if (!isParcelFinished(p.status) && p.activeRequestId == "" && p.status != "Registered" && p.status != "Missing" && p.status != "On Hold") {
+            cout << "  [" << p.parcelId << "] " << p.recipientName << " (" << p.recipientId << ") - Status: " << p.status << "\n";
+        }
+    }
+
+    string parcelId = toUpper(readLine("Enter Parcel ID (or 0 to cancel): "));
+    if (parcelId == "0" || parcelId == "") return;
+
     int pIndex = findParcel(sys, parcelId);
     if (pIndex == -1) {
         cout << "Error: Parcel ID " << parcelId << " not found.\n";
@@ -101,7 +129,8 @@ void createRequestMenu(CampusSystem& sys) {
     ServiceRequest& r = sys.requests[rIndex];
     logActivity(sys, parcelId, "REQUEST", r.serviceType + " request " + r.requestId + " created",
                 oldStatus, p.status, r.requestId, "", false);
-    cout << "Request " << r.requestId << " created with priority " << r.priority << ".\n";
+    cout << "[Success] Request " << r.requestId << " created with priority " << r.priority << ".\n";
+    cout << "  -> Next Step: Assign to a resource in Option 4 or Task 3.\n";
 }
 
 void viewWaitingRequests(CampusSystem& sys) {
@@ -135,8 +164,38 @@ void viewAllRequests(CampusSystem& sys) {
 }
 
 void completeRequest(CampusSystem& sys) {
-    cout << "\n--- Complete Request ---\n";
-    string requestId = toUpper(readLine("Request ID: "));
+    cout << "\n--- Complete Assigned Request & Handover ---\n";
+    int assignedCount = 0;
+    for (int i = 0; i < sys.requestCount; i++) {
+        if (sys.requests[i].status == "Assigned") assignedCount++;
+    }
+
+    if (assignedCount == 0) {
+        cout << "Notice: No requests are currently assigned to counters or riders.\n";
+        cout << "  -> Next Step: Go to Option 4 (or Task 3) to assign a waiting request first.\n";
+        return;
+    }
+
+    cout << "Assigned requests ready for handover:\n";
+    cout << "  " << left << setw(8) << "Req ID" << setw(10) << "Parcel" << setw(18) << "Service"
+         << setw(18) << "Recipient" << setw(12) << "Verify ID" << "Handled By\n";
+    cout << "  --------------------------------------------------------------------------------\n";
+    for (int i = 0; i < sys.requestCount; i++) {
+        ServiceRequest& r = sys.requests[i];
+        if (r.status == "Assigned") {
+            int pIdx = findParcel(sys, r.parcelId);
+            string recName = (pIdx != -1) ? sys.parcels[pIdx].recipientName : "-";
+            string recId = (pIdx != -1) ? sys.parcels[pIdx].recipientId : "-";
+            cout << "  " << left << setw(8) << r.requestId << setw(10) << r.parcelId
+                 << setw(18) << r.serviceType << setw(18) << recName
+                 << setw(12) << recId << r.resourceId << "\n";
+        }
+    }
+    cout << "  --------------------------------------------------------------------------------\n";
+
+    string requestId = toUpper(readLine("Enter Request ID to complete (or 0 to cancel): "));
+    if (requestId == "0" || requestId == "") return;
+
     int rIndex = findRequest(sys, requestId);
     if (rIndex == -1) {
         cout << "Error: Request ID not found.\n";
@@ -178,6 +237,7 @@ void completeRequest(CampusSystem& sys) {
     }
 
     if (!failed && r.serviceType != "Return to Sender") {
+        cout << "Verification for " << p.recipientName << " (Expected ID: " << p.recipientId << ")\n";
         string shownId = toUpper(readLine("Recipient verification ID (" + p.recipientId.substr(0, 2) + "######): "));
         if (shownId != toUpper(p.recipientId)) {
             cout << "Error: Recipient ID does not match ('" << shownId << "' != expected '" << p.recipientId << "')! Parcel not released.\n";
@@ -207,13 +267,32 @@ void completeRequest(CampusSystem& sys) {
     logActivity(sys, p.parcelId, "COMPLETE",
                 r.serviceType + " request " + requestId + " " + result + " by " + resId,
                 oldStatus, p.status, requestId, resId, false);
-    cout << "Request " << requestId << " " << result << ". Parcel " << p.parcelId
-         << " is now: " << p.status << "\n";
+    cout << "\n[Success] Request " << requestId << " " << result << "!\n";
+    cout << "  -> Parcel " << p.parcelId << " status updated to: " << p.status << "\n";
+    cout << "  -> Resource " << resId << " is now released and Available for the next request.\n";
 }
 
 void cancelRequest(CampusSystem& sys) {
     cout << "\n--- Cancel Service Request ---\n";
-    string requestId = toUpper(readLine("Request ID: "));
+    int cancellableCount = 0;
+    for (int i = 0; i < sys.requestCount; i++) {
+        if (sys.requests[i].status == "Waiting" || sys.requests[i].status == "Assigned") {
+            cancellableCount++;
+        }
+    }
+    if (cancellableCount == 0) {
+        cout << "No active requests available to cancel.\n";
+        return;
+    }
+    cout << "Active requests:\n";
+    for (int i = 0; i < sys.requestCount; i++) {
+        if (sys.requests[i].status == "Waiting" || sys.requests[i].status == "Assigned") {
+            cout << "  [" << sys.requests[i].requestId << "] Parcel: " << sys.requests[i].parcelId
+                 << " (" << sys.requests[i].serviceType << ", Status: " << sys.requests[i].status << ")\n";
+        }
+    }
+    string requestId = toUpper(readLine("Enter Request ID to cancel (or 0 to return): "));
+    if (requestId == "0" || requestId == "") return;
     int rIndex = findRequest(sys, requestId);
     if (rIndex == -1) {
         cout << "Error: Request not found.\n";
@@ -254,12 +333,12 @@ void task2Menu(CampusSystem& sys) {
     int choice = -1;
     while (choice != 0) {
         cout << "\n========== TASK 2: SERVICE REQUEST MANAGEMENT ==========\n";
-        cout << "  1. Create service request\n";
+        cout << "  1. Create manual / re-delivery request\n";
         cout << "  2. View waiting requests (priority order)\n";
-        cout << "  3. View all requests\n";
-        cout << "  4. Process next request\n";
-        cout << "  5. Complete request\n";
-        cout << "  6. Cancel request\n";
+        cout << "  3. View all service requests\n";
+        cout << "  4. Quick assign next waiting request to Counter/Rider\n";
+        cout << "  5. Complete request & verify recipient ID\n";
+        cout << "  6. Cancel an active request\n";
         cout << "  0. Back to main menu\n";
         choice = readInt("Choose: ");
 
