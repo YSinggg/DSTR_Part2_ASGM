@@ -74,9 +74,21 @@ void reviewParcelHistory(CampusSystem& sys) {
         return;
     }
 
-    cout << "\nActivities in chronological order:\n";
-    for (int i = count - 1; i >= 0; i--) {
-        printActivity(*found[i]);
+    cout << "\nSelect display order:\n";
+    cout << "  1. Newest first (LIFO - Stack Order)\n";
+    cout << "  2. Oldest first (Chronological Timeline)\n";
+    int order = readInt("Choose order (1-2): ");
+
+    if (order == 2) {
+        cout << "\n--- Activities in Chronological Order (Oldest First) ---\n";
+        for (int i = count - 1; i >= 0; i--) {
+            printActivity(*found[i]);
+        }
+    } else {
+        cout << "\n--- Activities in LIFO Order (Newest First - Top of Stack) ---\n";
+        for (int i = 0; i < count; i++) {
+            printActivity(*found[i]);
+        }
     }
 
     Activity* latest = found[0];
