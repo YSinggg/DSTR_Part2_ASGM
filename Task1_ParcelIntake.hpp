@@ -273,80 +273,188 @@ void searchParcel(CampusSystem& sys) {
     }
 }
 
-void sortNextParcel(CampusSystem& sys) {
-    cout << "\n--- Sort Next Parcel ---\n";
+void sortParcel(CampusSystem& sys) {
+    cout << "\n--- Sort & Process Incoming Parcel ---\n";
     if (sys.intakeQueue.isEmpty()) {
-        cout << "Intake queue is empty. No parcel to sort.\n";
+        cout << "Intake queue is empty. No parcels waiting to be sorted.\n";
         return;
     }
 
-    string parcelId = sys.intakeQueue.peek();
-    int index = findParcel(sys, parcelId);
+    string nextId = sys.intakeQueue.peek();
+    int nextIdx = findParcel(sys, nextId);
+    string nextName = (nextIdx != -1) ? sys.parcels[nextIdx].recipientName : "";
+    string nextType = (nextIdx != -1) ? sys.parcels[nextIdx].parcelType : "";
+
+    cout << "Waiting in intake queue (" << sys.intakeQueue.size() << "):\n";
+    cout << "  [Next FIFO in queue]: " << nextId << " - " << nextName << " (" << nextType << ")\n";
+    cout << "  Queue Order        : ";
+    ParcelNode* cur = sys.intakeQueue.getFront();
+    int countShown = 0;
+    while (cur != nullptr && countShown < 8) {
+        cout << cur->parcelId;
+        if (cur->next != nullptr && countShown < 7) cout << " -> ";
+        cur = cur->next;
+        countShown++;
+    }
+    if (sys.intakeQueue.size() > 8) {
+        cout << " -> ... (" << (sys.intakeQueue.size() - 8) << " more)";
+    }
+    cout << "\n\n";
+
+    cout << "Select sorting mode:\n";
+    cout << "  1. Sort next parcel in queue (" << nextId << ")\n";
+    cout << "  2. Search & sort specific parcel by ID / Tracking No\n";
+    cout << "  3. Skip " << nextId << " (move to back of queue)\n";
+    cout << "  0. Back to menu\n";
+    int mode = readInt("Choose (0-3): ");
+
+    if (mode == 0) return;
+
+    if (mode == 3) {
+        if (sys.intakeQueue.size() <= 1) {
+            cout << "Notice: Only 1 parcel in intake queue. Cannot rotate.\n";
+            return;
+        }
+        string skipped = sys.intakeQueue.dequeue();
+        sys.intakeQueue.enqueue(skipped);
+        cout << "[Success] Parcel " << skipped << " moved to the back of intake queue.\n";
+        cout << "  -> Next parcel in line is now: " << sys.intakeQueue.peek() << "\n";
+        return;
+    }
+
+    string targetParcelId = "";
+    bool fromHead = false;
+
+    if (mode == 1) {
+        targetParcelId = nextId;
+        fromHead = true;
+    } else if (mode == 2) {
+        cout << "\nTip: Enter Parcel ID (e.g. P004) or Tracking Number (e.g. NV400004).\n";
+        string query = toUpper(readLine("Enter Parcel ID / Tracking No (or 0 to cancel): "));
+        if (query == "0" || query == "") return;
+
+        int idx = findParcel(sys, query);
+        if (idx == -1) {
+            idx = findParcelByTracking(sys, query);
+        }
+
+        if (idx == -1) {
+            cout << "Error: Parcel '" << query << "' was not found in system!\n";
+            return;
+        }
+
+        Parcel& foundP = sys.parcels[idx];
+        if (foundP.status != "Registered") {
+            cout << "Cannot sort parcel " << foundP.parcelId << "!\n";
+            if (foundP.status == "On Hold") {
+                cout << "  Reason: Parcel is currently 'On Hold'. To sort it, release it back to the intake queue first in Option 6.\n";
+            } else if (foundP.status == "Missing") {
+                cout << "  Reason: Parcel is currently marked 'Missing'. Release it first in Option 6 once found.\n";
+            } else if (isParcelFinished(foundP.status)) {
+                cout << "  Reason: Parcel is already completed (" << foundP.status << ").\n";
+            } else {
+                cout << "  Reason: Parcel is already sorted (" << foundP.status << ") and has active request " 
+                     << foundP.activeRequestId << " in Task 2.\n";
+            }
+            return;
+        }
+
+        targetParcelId = foundP.parcelId;
+        fromHead = (targetParcelId == sys.intakeQueue.peek());
+    } else {
+        cout << "Invalid choice!\n";
+        return;
+    }
+
+    int index = findParcel(sys, targetParcelId);
     if (index == -1) {
-        sys.intakeQueue.dequeue();
+        sys.intakeQueue.removeParcel(targetParcelId);
         cout << "Error: Parcel record missing from system.\n";
         return;
     }
     Parcel& p = sys.parcels[index];
+    cout << "\n--- Selected Parcel Details ---\n";
     showParcelDetails(p);
 
-    cout << "\nSelect action:\n";
+    cout << "\nSelect action for " << p.parcelId << ":\n";
     cout << "  1. Counter collection\n";
     cout << "  2. Campus delivery\n";
     cout << "  3. Special handling (fragile / perishable)\n";
     cout << "  4. Return to sender\n";
     cout << "  5. Place on hold\n";
-    cout << "  0. Skip for now\n";
-    int choice = readInt("Choose (0-5): ");
+    if (fromHead && sys.intakeQueue.size() > 1) {
+        cout << "  6. Skip this parcel (move to back of queue)\n";
+    }
+    cout << "  0. Cancel (keep position in queue)\n";
+    int actionChoice = readInt("Choose: ");
 
-    if (choice == 0) {
-        cout << "Parcel remains in queue.\n";
+    if (actionChoice == 0) {
+        cout << "Sorting cancelled. Parcel remains in queue.\n";
         return;
     }
-    if (choice < 1 || choice > 5) {
+
+    if (fromHead && actionChoice == 6 && sys.intakeQueue.size() > 1) {
+        string skipped = sys.intakeQueue.dequeue();
+        sys.intakeQueue.enqueue(skipped);
+        cout << "[Success] Parcel " << skipped << " moved to the back of the intake queue.\n";
+        cout << "  -> Next parcel in line is now: " << sys.intakeQueue.peek() << "\n";
+        return;
+    }
+
+    if (actionChoice < 1 || actionChoice > 5) {
         cout << "Invalid choice! Parcel remains in queue.\n";
         return;
     }
 
-    if ((p.parcelType == "Fragile" || p.parcelType == "Perishable") && (choice == 1 || choice == 2)) {
+    if ((p.parcelType == "Fragile" || p.parcelType == "Perishable") && (actionChoice == 1 || actionChoice == 2)) {
         cout << "Notice: Parcel type is '" << p.parcelType
              << "'. Special Handling is strongly recommended.\n";
-        int confirm = readInt("Proceed with standard " + string(choice == 1 ? "Collection" : "Delivery") + "? (1 = Yes, 0 = Cancel): ");
+        int confirm = readInt("Proceed with standard " + string(actionChoice == 1 ? "Collection" : "Delivery") + "? (1 = Yes, 0 = Cancel): ");
         if (confirm != 1) {
             cout << "Sorting cancelled. Parcel remains in queue.\n";
             return;
         }
     }
 
-    if (choice != 5 && sys.requestCount >= MAX_REQUESTS) {
+    if (actionChoice != 5 && sys.requestCount >= MAX_REQUESTS) {
         cout << "Error: Service request storage is full.\n";
         return;
     }
 
-    sys.intakeQueue.dequeue();
+    // Remove from intake queue
+    if (fromHead) {
+        sys.intakeQueue.dequeue();
+    } else {
+        sys.intakeQueue.removeParcel(p.parcelId);
+    }
+
     string oldStatus = p.status;
 
-    if (choice == 5) {
+    if (actionChoice == 5) {
         p.status = "On Hold";
-        logActivity(sys, parcelId, "SORT", "Placed on hold", oldStatus, p.status, "", "", true);
-        cout << parcelId << " is now On Hold.\n";
+        logActivity(sys, p.parcelId, "SORT", "Placed on hold", oldStatus, p.status, "", "", true);
+        cout << "\n[Success] Parcel " << p.parcelId << " is now On Hold.\n";
         return;
     }
 
     string services[4] = {"Collection", "Delivery", "Special Handling", "Return to Sender"};
-    string serviceType = services[choice - 1];
-    int rIndex = createServiceRequest(sys, parcelId, serviceType);
+    string serviceType = services[actionChoice - 1];
+    int rIndex = createServiceRequest(sys, p.parcelId, serviceType);
     if (rIndex == -1) {
         cout << "Error: Failed to create service request.\n";
         return;
     }
     string requestId = sys.requests[rIndex].requestId;
 
-    logActivity(sys, parcelId, "SORT", "Sorted for " + serviceType + " (" + requestId + ")",
+    logActivity(sys, p.parcelId, "SORT", "Sorted for " + serviceType + " (" + requestId + ")",
                 oldStatus, p.status, requestId, "", true);
-    cout << "\n[Success] Parcel " << parcelId << " sorted for " << serviceType << "!\n";
+    cout << "\n[Success] Parcel " << p.parcelId << " sorted for " << serviceType << "!\n";
     cout << "  -> Service Request " << requestId << " automatically created and added to Task 2 waiting queue.\n";
     cout << "  -> Next Step: Go to Task 3 (or Task 2 Option 4) to assign a counter/rider.\n";
+}
+
+void sortNextParcel(CampusSystem& sys) {
+    sortParcel(sys);
 }
 
 void updateParcel(CampusSystem& sys) {
@@ -450,7 +558,7 @@ void task1Menu(CampusSystem& sys) {
         cout << "  2. Display all parcels\n";
         cout << "  3. View intake queue\n";
         cout << "  4. Search parcel\n";
-        cout << "  5. Sort next parcel\n";
+        cout << "  5. Sort parcel (Next in queue / Search by ID)\n";
         cout << "  6. Update / remove parcel\n";
         cout << "  0. Back to main menu\n";
         choice = readInt("Choose: ");

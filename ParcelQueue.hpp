@@ -101,6 +101,15 @@ public:
     ParcelNode* getFront() {
         return front;
     }
+
+    bool contains(string parcelId) {
+        ParcelNode* curr = front;
+        while (curr != nullptr) {
+            if (curr->parcelId == parcelId) return true;
+            curr = curr->next;
+        }
+        return false;
+    }
 };
 
 #endif
